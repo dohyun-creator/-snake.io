@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake.io Clone</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #111424;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .score-board {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+            font-size: 1.2rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        canvas {
+            background: #161a2e;
+            display: block;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 10px;
+        }
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(17, 20, 36, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #game-over-screen.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: #ff4757;
+            text-shadow: 0 0 10px rgba(255, 71, 87, 0.5);
+        }
+        p {
+            font-size: 1.5rem;
+            margin-bottom: 25px;
+            color: #ced6e0;
+        }
+        button {
+            background: #2ed573;
+            color: white;
+            border: none;
+            padding: 12px 35px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(46, 213, 115, 0.4);
+            transition: transform 0.2s, background 0.2s;
+        }
+        button:hover {
+            background: #26af5f;
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            color: #747d8c;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-container">
+        <div class="score-board">SCORE: <span id="score">0</span></div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>GAME OVER</h1>
+        <p>최종 점수: <span id="final-score">0</span></p>
+        <button id="restart-btn">다시 시작</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="instructions">화면 위에서 마우스를 움직이거나 터치하여 스네이크를 조종하세요.</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const finalScoreEl = document.getElementById('final-score');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // 화면 크기에 맞게 캔버스 크기 조정
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * 0.9;
+            canvas.height = window.innerHeight * 0.8;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 게임 변수 설정
+        let snake, foods, mouse, score, isGameOver, speed;
+        
+        const SNAKE_RADIUS = 12;
+        const FOOD_COUNT = 40;
+
+        function initGame() {
+            snake = {
+                body: [],
+                length: 20, // 초기 마디 수
+                color: '#2ed573',
+                angle: 0
+            };
+
+            // 초기 위치 (캔버스 중심)
+            const startX = canvas.width / 2;
+            const startY = canvas.height / 2;
+            for (let i = 0; i < snake.length; i++) {
+                snake.body.push({ x: startX, y: startY });
+            }
+
+            // 먹이 생성
+            foods = [];
+            for (let i = 0; i < FOOD_COUNT; i++) {
+                foods.push(createFood());
+            }
+
+            mouse = { x: startX, y: startY };
+            score = 0;
+            speed = 3.5;
+            isGameOver = false;
+
+            scoreEl.textContent = score;
+            gameOverScreen.classList.remove('show');
+        }
+
+        function createFood() {
+            const colors = ['#ff4757', '#ffa502', '#eccc68', '#1e90ff', '#ff6b81', '#70a1ff'];
+            return {
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: Math.random() * 4 + 4,
+                color: colors[Math.floor(Math.random() * colors.length)]
+            };
+        }
+
+        // 입력 이벤트 리스너
+        window.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if(e.touches.length > 0) {
+                const rect = canvas.getBoundingClientRect();
+                mouse.x = e.touches[0].clientX - rect.left;
+                mouse.y = e.touches[0].clientY - rect.top;
+            }
+        });
+
+        restartBtn.addEventListener('click', initGame);
+
+        // 게임 루프
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 데이터 업데이트
+        function update() {
+            if (isGameOver) return;
+
+            const head = snake.body[0];
+            
+            // 마우스(목표지점)와 머리 사이의 거리 계산
+            const dx = mouse.x - head.x;
+            const dy = mouse.y - head.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // 마우스 방향으로 각도 업데이트
+            if (distance > 5) {
+                snake.angle = Math.atan2(dy, dx);
+                
+                // 머리 이동
+                const nextX = head.x + Math.cos(snake.angle) * speed;
+                const nextY = head.y + Math.sin(snake.angle) * speed;
+
+                // 벽 충돌 검사 (Snake.io 스타일: 벽에 부딪히면 게임오버)
+                if (nextX < 0 || nextX > canvas.width || nextY < 0 || nextY > canvas.height) {
+                    endGame();
+                    return;
+                }
+
+                // 새로운 머리 위치를 배열 앞에 추가
+                snake.body.unshift({ x: nextX, y: nextY });
+                
+                // 설정된 길이 유지 (먹이를 먹지 않으면 꼬리 잘라내기)
+                if (snake.body.length > snake.length) {
+                    snake.body.pop();
+                }
+            }
+
+            // 먹이 충돌 검사
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
+                const fdx = head.x - food.x;
+                const fdy = head.y - food.y;
+                const fDist = Math.sqrt(fdx * fdx + fdy * fdy);
+
+                if (fDist < SNAKE_RADIUS + food.radius) {
+                    // 점수 및 길이 증가
+                    score += Math.floor(food.radius);
+                    snake.length += 3; 
+                    speed = Math.min(6, 3.5 + (score / 200)); // 점수에 따라 아주 조금씩 빨라짐
+                    scoreEl.textContent = score;
+
+                    // 먹이 재생성
+                    foods.splice(i, 1);
+                    foods.push(createFood());
+                }
+            }
+        }
+
+        // 화면 그리기
+        function render() {
+            // 잔상 효과를 위해 배경을 살짝 투명하게 덮음
+            ctx.fillStyle = '#161a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 격자 무늬 배경 그리기 (움직임 체감을 위해)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.lineWidth = 1;
+            const gridSize = 40;
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // 먹이 그리기
+            foods.forEach(food => {
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
+                ctx.fillStyle = food.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = food.color;
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0; // 그림자 초기화
+
+            // 스네이크 몸통 그리기 (꼬리부터 머리 순으로)
+            for (let i = snake.body.length - 1; i >= 0; i--) {
+                // 부드러운 마디 표현을 위해 일정 간격으로 마디 선택 그리기
+                if (i % 2 === 0 || i === 0) {
+                    const part = snake.body[i];
+                    ctx.beginPath();
+                    
+                    // 머리와 몸통 크기 차별화
+                    const radius = i === 0 ? SNAKE_RADIUS : SNAKE_RADIUS * 0.85;
+                    ctx.arc(part.x, part.y, radius, 0, Math.PI * 2);
+                    
+                    // 머리는 조금 더 밝은 색
+                    ctx.fillStyle = i === 0 ? '#55efc4' : snake.color;
+                    ctx.fill();
+                    ctx.closePath();
+
+                    // 머리에 눈 그리기
+                    if (i === 0) {
+                        ctx.fillStyle = '#ffffff';
+                        // 왼쪽 눈
+                        ctx.beginPath();
+                        ctx.arc(
+                            part.x + Math.cos(snake.angle + 0.5) * 6,
+                            part.y + Math.sin(snake.angle + 0.5) * 6,
+                            3, 0, Math.PI * 2
+                        );
+                        ctx.fill();
+                        
+                        // 오른쪽 눈
+                        ctx.beginPath();
+                        ctx.arc(
+                            part.x + Math.cos(snake.angle - 0.5) * 6,
+                            part.y + Math.sin(snake.angle - 0.5) * 6,
+                            3, 0, Math.PI * 2
+                        );
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            finalScoreEl.textContent = score;
+            gameOverScreen.classList.add('show');
+        }
+
+        // 실행
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
